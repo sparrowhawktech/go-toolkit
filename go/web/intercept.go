@@ -142,7 +142,7 @@ func InterceptAudit(delegate func(tx *tx.Transaction, w http.ResponseWriter, r *
 	return func(tx *tx.Transaction, w http.ResponseWriter, r *http.Request) {
 		sessionEntry := r.Context().Value("sessionEntry")
 		if sessionEntry != nil {
-			tx.Exec(fmt.Sprintf("set local audit.user_name to '%d';", sessionEntry.(*auth.SessionEntry).UserId))
+			tx.Exec(fmt.Sprintf("set local audit.user_name to '%d';", *sessionEntry.(*auth.SessionEntry).UserId))
 		}
 		tx.Exec(fmt.Sprintf("set local audit.context to '%s';", r.URL.Path))
 		delegate(tx, w, r)
