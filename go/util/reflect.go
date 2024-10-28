@@ -19,3 +19,12 @@ func IsStructPtr(value reflect.Value) bool {
 		return false
 	}
 }
+
+func IsStructPtrType(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr {
+		instanceType := t.Elem()
+		return instanceType.Kind() == reflect.Struct && instanceType != timeType
+	} else {
+		return false
+	}
+}
