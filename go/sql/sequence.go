@@ -3,8 +3,9 @@ package sql
 import (
 	"database/sql"
 
-	_ "github.com/lib/pq"
 	"sparrowhawktech/toolkit/util"
+
+	_ "github.com/lib/pq"
 )
 
 type Sequence struct {
@@ -20,17 +21,24 @@ type PgSequenceProvider struct {
 	SequenceProvider
 	tx      *sql.Tx
 	stmtMap map[string]*sql.Stmt
+	nameMap map[string]string
 }
 
 func (o *PgSequenceProvider) next(name string) int64 {
 	stmt := o.stmtMap[name]
+	sequenceName, ok := o.nameMap[name]
+	if !ok {
+		sequenceName = name + "seq"
+		o.nameMap[name] = sequenceName
+	}
 	if stmt == nil {
+
 		var err error
-		stmt, err = o.tx.Prepare("select * from nextval('" + name + "seq')")
+		stmt, err = o.tx.Prepare("select * from nextval($1)")
 		util.CheckErr(err)
 		o.stmtMap[name] = stmt
 	}
-	r := QueryStmt(stmt)
+	r := QueryStmt(stmt, sequenceName)
 	defer closeRows(r)
 	var id int64
 	r.Next()
@@ -39,7 +47,7 @@ func (o *PgSequenceProvider) next(name string) int64 {
 }
 
 func NewPgSequenceProvider(tx *sql.Tx) *PgSequenceProvider {
-	return &PgSequenceProvider{tx: tx, stmtMap: make(map[string]*sql.Stmt)}
+	return &PgSequenceProvider{tx: tx, stmtMap: make(map[string]*sql.Stmt), nameMap: make(map[string]string)}
 }
 
 type Sequences struct {
