@@ -86,12 +86,17 @@ func Write(w io.Writer, data []byte) {
 	}
 }
 
-func Read(r io.Reader, buf []byte) int {
+func Read(r io.Reader, buf []byte) {
 	l, err := r.Read(buf)
 	CheckErr(err)
 	if l != len(buf) {
 		panic(fmt.Sprintf("read length does not match: %d vs %d", l, len(buf)))
 	}
+}
+
+func ReadUpTo(r io.Reader, buf []byte) int {
+	l, err := r.Read(buf)
+	CheckErr(err)
 	return l
 }
 
