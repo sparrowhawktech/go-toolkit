@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -310,59 +311,53 @@ func buildObjectFields(value reflect.Value) []reflect.Value {
 	return fields
 }
 
-func ForInsert(template interface{}, offset int) string {
+func ForInsert(template interface{}, offset int, buffer *bytes.Buffer) {
 	objectType := reflect.TypeOf(template)
-	buffer := bytes.NewBufferString("(")
-	buffer.WriteString(forSelect(objectType, nil, offset))
-	buffer.WriteString(") values(")
+	forSelect(objectType, nil, offset, buffer)
+	util.WriteString(") values(", buffer)
 	n := 0
 	for i := offset; i < objectType.NumField(); i++ {
 		if n > 0 {
-			buffer.WriteString(", ")
+			util.WriteString(", ", buffer)
 		}
 		n++
-		buffer.WriteString(fmt.Sprintf("$%d", n))
+		util.WriteString(strconv.Itoa(n), buffer)
 	}
-	buffer.WriteString(")")
-	return buffer.String()
+	util.WriteString(")", buffer)
 }
 
-func ForUpdate(template interface{}, offset int, firstNum int) string {
+func ForUpdate(template interface{}, offset int, firstNum int, buffer *bytes.Buffer) {
 	objectType := reflect.TypeOf(template)
-	buffer := bytes.NewBufferString("")
 	for i := 0; i < objectType.NumField()-offset; i++ {
 		if i > 0 {
-			buffer.WriteString(", ")
+			util.WriteString(", ", buffer)
 		}
 		field := objectType.Field(i + offset)
 		if v, ok := field.Tag.Lookup("sql"); ok {
-			buffer.WriteString(v)
+			util.WriteString(v, buffer)
 		} else {
-			buffer.WriteString(field.Name)
+			util.WriteString(field.Name, buffer)
 		}
-		buffer.WriteString(fmt.Sprintf(" = $%d", i+firstNum))
+		util.WriteString(fmt.Sprintf(" = $%d", i+firstNum), buffer)
 	}
-	return buffer.String()
 }
 
-func forSelect(objectType reflect.Type, alias *string, offset int) string {
-	buffer := bytes.NewBufferString("")
+func forSelect(objectType reflect.Type, alias *string, offset int, buffer *bytes.Buffer) {
 	for i := 0; i < objectType.NumField()-offset; i++ {
 		if i > 0 {
-			buffer.WriteString(", ")
+			util.WriteString(", ", buffer)
 		}
 		if alias != nil {
-			buffer.WriteString(*alias)
-			buffer.WriteString(".")
+			util.WriteString(*alias, buffer)
+			util.WriteString(".", buffer)
 		}
 		field := objectType.Field(i + offset)
 		if v, ok := field.Tag.Lookup("sql"); ok {
-			buffer.WriteString(v)
+			util.WriteString(v, buffer)
 		} else {
-			buffer.WriteString(field.Name)
+			util.WriteString(field.Name, buffer)
 		}
 	}
-	return buffer.String()
 }
 
 func ScanAll(rows *sql.Rows) []interface{} {

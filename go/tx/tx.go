@@ -1,6 +1,7 @@
 package tx
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -58,7 +59,12 @@ func (o *Transaction) InsertMapped(schema string, data interface{}) int64 {
 	key := schema + "." + name
 	stmt, ok := o.insMap[key]
 	if !ok {
-		sentence := "insert into " + schema + "." + name + sql2.ForInsert(data, offset)
+		buf := bytes.NewBufferString("insert into")
+		util.WriteString(schema, buf)
+		util.WriteString(".", buf)
+		util.WriteString(name, buf)
+		sql2.ForInsert(data, offset, buf)
+		sentence := buf.String()
 		var err error
 		stmt, err = o.tx.Prepare(sentence)
 		util.CheckErr(err)
@@ -73,11 +79,17 @@ func (o *Transaction) UpdateMapped(schema string, entity interface{}) int64 {
 	key := schema + "." + name
 	stmt, ok := o.updMap[key]
 	if !ok {
-		idName := o.resolveIdName(objectType)
-		sentence := "update " + schema + "." + objectType.Name() + " set " + sql2.ForUpdate(entity, 1, 2) +
-			" where " + idName + " = $1"
+		buf := bytes.NewBufferString("update")
+		util.WriteString(schema, buf)
+		util.WriteString(".", buf)
+		util.WriteString(name, buf)
+		util.WriteString(" set ", buf)
+		sql2.ForUpdate(entity, 1, 2, buf)
+		util.WriteString(" where ", buf)
+		util.WriteString(o.resolveIdName(objectType), buf)
+		util.WriteString(" = $1", buf)
 		var err error
-		stmt, err = o.tx.Prepare(sentence)
+		stmt, err = o.tx.Prepare(buf.String())
 		util.CheckErr(err)
 		o.updMap[key] = stmt
 	}
@@ -104,9 +116,15 @@ func (o *Transaction) DeleteMapped(schema string, entity interface{}) {
 	stmt, ok := o.delMap[key]
 	if !ok {
 		idName := o.resolveIdName(objectType)
-		sentence := "delete from " + schema + "." + name + " where " + idName + " = $1"
+		buf := bytes.NewBufferString("delete from ")
+		util.WriteString(schema, buf)
+		util.WriteString(".", buf)
+		util.WriteString(name, buf)
+		util.WriteString(" where ", buf)
+		util.WriteString(idName, buf)
+		util.WriteString(" = $1", buf)
 		var err error
-		stmt, err = o.tx.Prepare(sentence)
+		stmt, err = o.tx.Prepare(buf.String())
 		util.CheckErr(err)
 		o.delMap[key] = stmt
 	}
@@ -175,6 +193,10 @@ func NewTransaction(datasourceConfig sql2.DatasourceConfig, tx *sql.Tx, db *sql.
 
 func Execute(config sql2.DatasourceConfig, callback func(trx *Transaction, args ...interface{}) interface{}, args ...interface{}) interface{} {
 	db := sql2.GlobalDatabases.OpenDB(config)
+	return doExecute(config, db, callback, args)
+}
+
+func doExecute(config sql2.DatasourceConfig, db *sql.DB, callback func(trx *Transaction, args ...interface{}) interface{}, args []interface{}) interface{} {
 	tx, err := db.Begin()
 	util.CheckErr(err)
 	defer sql2.RollbackOnPanic(tx)
@@ -191,6 +213,10 @@ func Execute(config sql2.DatasourceConfig, callback func(trx *Transaction, args 
 
 func ExecuteRO(config sql2.DatasourceConfig, callback func(trx *Transaction, args ...interface{}) interface{}, args ...interface{}) interface{} {
 	db := sql2.GlobalDatabases.OpenDB(config)
+	return doExecuteRO(config, db, callback, args)
+}
+
+func doExecuteRO(config sql2.DatasourceConfig, db *sql.DB, callback func(trx *Transaction, args ...interface{}) interface{}, args []interface{}) interface{} {
 	ctx := context.TODO()
 	opts := sql.TxOptions{ReadOnly: true, Isolation: sql.LevelReadCommitted}
 	tx, err := db.BeginTx(ctx, &opts)
@@ -224,4 +250,32 @@ func InterceptTransactionalRO(datasourceConfig sql2.DatasourceConfig, delegate f
 			return nil
 		})
 	}
+}
+
+type Connection struct {
+	DatasourceConfig *sql2.DatasourceConfig
+	Db               *sql.DB
+}
+
+func (o *Connection) Open() {
+	db := sql2.GlobalDatabases.OpenDB(*o.DatasourceConfig)
+	o.Db = db
+}
+
+func (o *Connection) Close() {
+	sql2.CloseDB(o.Db)
+	o.Db = nil
+}
+
+func (o *Connection) Execute(callback func(trx *Transaction, args ...interface{}) interface{}, args ...interface{}) interface{} {
+
+	return doExecute(*o.DatasourceConfig, o.Db, callback, args)
+}
+
+func (o *Connection) ExecuteRO(callback func(trx *Transaction, args ...interface{}) interface{}, args ...interface{}) interface{} {
+	return doExecuteRO(*o.DatasourceConfig, o.Db, callback, args)
+}
+
+func NewConnection(datasourceConfig sql2.DatasourceConfig) *Connection {
+	return &Connection{DatasourceConfig: &datasourceConfig}
 }
